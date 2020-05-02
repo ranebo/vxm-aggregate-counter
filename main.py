@@ -1,4 +1,9 @@
+from datetime import datetime
 import tkinter as tk
+import tkinter.filedialog
+import csv
+import os
+
 
 def key_percent_id(key):
     return f'{key}_perc'
@@ -34,11 +39,11 @@ class App(tk.Tk):
         self.setup_keys()
         self.setup_totals()
         self.update_total_count_and_percentages()
-        self.reset_button = tk.Button(self, text="Reset", command=self.clear_all)
-        self.export_button = tk.Button(self, text="Export") # , command=self.clear_all)
+        self.reset_button = tk.Button(self, text='Reset', command=self.clear_all)
+        self.export_button = tk.Button(self, text='Export', command=self.export_csv)
 
         row_offset = self.header_row_offset + len(self.keys_config) + 1
-        
+
         self.reset_button.grid(row=row_offset, column=0)
         self.export_button.grid(row=row_offset, column=1)
 
@@ -130,7 +135,32 @@ class App(tk.Tk):
             self.update_total_count_and_percentages()
 
     def export_csv(self):
-        pass
+        currdir = os.getcwd()
+        initial_filename = f'aggregate-count-{datetime.now().strftime("%d-%m-%Y_%I-%M-%S_%p")}'
+        myFormats = [
+            ('CSV', '*.csv'),
+        ]
+
+        filepath = tkinter.filedialog.asksaveasfile(
+            parent=self,
+            filetypes=myFormats,
+            initialdir=currdir,
+            initialfile=initial_filename,
+            title="Save as...",
+            defaultextension='.csv'
+        )
+
+        with open(filepath.name, 'w') as f:
+            w = csv.writer(f, quoting=csv.QUOTE_ALL)
+            w.writerow(self.heading[1:])
+            for key, label in self.keys_config:
+                row = [
+                    label,
+                    getattr(self, key).get(),
+                    getattr(self, key_percent_id(key)).get()
+                ]
+                w.writerow(row)
+            w.writerow(['Total', self.total_count.get(), self.total_perc.get()])
 
 if __name__ == "__main__":
     app = App()
