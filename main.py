@@ -56,7 +56,7 @@ class App(tk.Tk):
         self.max_step_dist = 5.0
         self.default_step_dist = self.concrete_dist
 
-        self.title("Concrete Aggregate Counter")
+        self.title("Jon's PetroPro")
         self.geometry("500x350")
 
         self.raw_key_inputs = []
