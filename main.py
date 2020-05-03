@@ -6,10 +6,16 @@ import serial
 import csv
 import os
 
+DEBUG = True
+
+def log(*args):
+    if DEBUG:
+        print(*args)
+
 class MotorController:
 
-    def __init__(self, usb_mfr_regex='Velmex'):
-        self.usb_mfr_regex = usb_mfr_regex
+    def __init__(self, usb_mfr='Velmex'):
+        self.usb_mfr = usb_mfr
         self.port = None
         self.serial = None
 
@@ -20,7 +26,7 @@ class MotorController:
     def find_port(self):
         ports = list_ports.comports()
         for p in ports:
-            if p.manufacturer and self.usb_mfr_regex in p.manufacturer:
+            if p.manufacturer and self.usb_mfr in p.manufacturer:
                 self.port = p
 
     def print_ports(self):
@@ -30,13 +36,14 @@ class MotorController:
 
     def write(self, value):
         if self.serial:
+            log(f'Motor control command sent: {value}')
             self.serial.write(str.encode(value))
 
     def move_command(self, dist):
         return f'F,C,I1M{dist},L1;'
 
     def convert_to_steps(self, dist):
-        return dist * (1550 / 0.1) # steps = inches * (steps/inches))
+        return int(round(dist * (1550 / 0.1))) # steps = inches * (steps/inches))
 
     def move_forward(self, dist):
         self.write(self.move_command(self.convert_to_steps(dist)))
@@ -51,10 +58,14 @@ class App(tk.Tk):
         super().__init__()
 
         self.controller = controller
-        self.default_step_distance = 0.1
+
+        self.concrete_dist = 0.1
+        self.mortar_stucco_dist = 0.05
+        self.max_step_dist = 5
+        self.default_step_dist = self.concrete_dist
 
         self.title("Concrete Aggregate Counter")
-        self.geometry("500x400")
+        self.geometry("500x350")
 
         self.raw_key_inputs = []
 
@@ -73,9 +84,18 @@ class App(tk.Tk):
         self.total_count = tk.IntVar()
         self.total_perc = tk.DoubleVar()
 
-        self.step_distance = tk.DoubleVar()
-        
-        self.heading_row_offset = 1
+        self.step_dist = tk.StringVar()
+        self.step_dist_entry = tk.Entry(
+            self,
+            textvariable=self.step_dist,
+            validate='all',
+            justify='center',
+            # other options see here: https://stackoverflow.com/questions/4140437/interactively-validating-entry-widget-content-in-tkinter
+            validatecommand=(self.register(self.validate_step_increment), '%P', '%S', '%V'),
+            invalidcommand=(self.register(self.invalid_step_increment), '%P', '%s', '%V')
+        )
+
+        self.heading_row_offset = 2
         self.totals_row_offset = self.heading_row_offset + len(self.keys_config)
         self.controls_row_offset = self.totals_row_offset + 1
 
@@ -90,7 +110,7 @@ class App(tk.Tk):
 
     def setup_heading(self):
         for i, text in enumerate(self.heading):
-            tk.Label(self, text=text, borderwidth=1).grid(row=0,column=i)
+            tk.Label(self, text=text, pady=5, font='Verdana 14 bold underline').grid(row=1,column=i)
 
     def setup_keys(self):
         for i, row in enumerate(self.keys_config):
@@ -99,10 +119,10 @@ class App(tk.Tk):
             row_i = self.heading_row_offset + i
             key_count, key_perc = self.setup_key(key)
 
-            tk.Label(self, text=key, borderwidth=1).grid(row=row_i,column=0)
-            tk.Label(self, text=label, borderwidth=1).grid(row=row_i,column=1)
-            tk.Label(self, textvariable=key_count, borderwidth=1).grid(row=row_i,column=2)
-            tk.Label(self, textvariable=key_perc, borderwidth=1).grid(row=row_i,column=3)
+            tk.Label(self, text=key).grid(row=row_i,column=0)
+            tk.Label(self, text=label).grid(row=row_i,column=1)
+            tk.Label(self, textvariable=key_count).grid(row=row_i,column=2)
+            tk.Label(self, textvariable=key_perc).grid(row=row_i,column=3)
 
     def setup_key(self, key):
         key_perc_id = self.get_key_percent_id(key)
@@ -114,33 +134,95 @@ class App(tk.Tk):
         key_perc = getattr(self, key_perc_id)
 
         def on_key_press(evt):
-            self.raw_key_inputs.append(key)
-            self.update_key_count(key_count)
-            self.update_total_count_and_percentages()
-            self.move_forward(evt)
+            if self.is_bound_key_event(evt):
+                self.raw_key_inputs.append(key)
+                self.update_key_count(key_count)
+                self.update_total_count_and_percentages()
+                self.step_forward(evt)
 
         self.bind(key, on_key_press)
         
         return (key_count, key_perc)
 
     def setup_totals(self):
-        tk.Label(self, text=self.total_label).grid(row=self.totals_row_offset, column=1)
-        tk.Label(self, textvariable=self.total_count).grid(row=self.totals_row_offset, column=2)
-        tk.Label(self, textvariable=self.total_perc).grid(row=self.totals_row_offset, column=3)
+        pady = 10
+        tk.Label(self, pady=pady, font='Verdana 12 bold', text=self.total_label).grid(row=self.totals_row_offset, column=1)
+        tk.Label(self, pady=pady, font='Verdana 12 bold', textvariable=self.total_count).grid(row=self.totals_row_offset, column=2)
+        tk.Label(self, pady=pady, font='Verdana 12 bold', textvariable=self.total_perc).grid(row=self.totals_row_offset, column=3)
 
     def setup_specials(self):
-        self.step_distance.set(self.default_step_distance)
-        # validatecommand
+        self.step_dist.set(self.default_step_dist)
 
-        tk.Button(self, text='Reset', command=self.clear_all).grid(row=self.controls_row_offset, column=0, sticky='E')
-        tk.Button(self, text='Export', command=self.export_csv).grid(row=self.controls_row_offset, column=1, sticky='w')
-        tk.Label(self, text='Step Dist. (in.)').grid(row=self.controls_row_offset, column=2)
-        tk.Entry(self, textvariable=self.step_distance).grid(row=self.controls_row_offset, column=3)
-        
+        step_pady = 25
+        data_pady = 15
+        muted_text = 'grey'
+
+        tk.Label(self, text='Step Dist. (in.):', fg=muted_text).grid(row=0, column=0, pady=step_pady, sticky='E')
+        self.step_dist_entry.grid(row=0, column=1, pady=step_pady)
+        tk.Button(self, text='Concrete', command=self.set_concrete_dist).grid(row=0, column=2, pady=step_pady, sticky='WE')
+        tk.Button(self, text='Mortar/Stucco', command=self.set_mortar_stucco_dist).grid(row=0, column=3, pady=step_pady, sticky='WE')
+
+        tk.Label(self, text='Data Options:', fg=muted_text).grid(row=self.controls_row_offset, column=1, pady=data_pady, sticky='E')
+        tk.Button(self, text='Reset', command=self.clear_all).grid(row=self.controls_row_offset, column=2, pady=data_pady, sticky='WE')
+        tk.Button(self, text='Export', command=self.export_csv).grid(row=self.controls_row_offset, column=3, pady=data_pady, sticky='WE')
+
         self.bind('<BackSpace>', self.clear_one)
 
-        self.bind('<Right>', self.move_forward)
-        self.bind('<Left>', self.move_backward)
+        self.bind('<Return>', lambda evt: self.focus_set())
+        self.bind('<1>', self.step_dist_entry_focus)
+
+        self.bind('<Right>', self.step_forward)
+        self.bind('<Left>', self.step_backward)
+
+    def set_concrete_dist(self):
+        self.step_dist.set(self.concrete_dist)
+        self.default_step_dist =  self.concrete_dist
+
+    def set_mortar_stucco_dist(self):
+        self.step_dist.set(self.mortar_stucco_dist)
+        self.default_step_dist =  self.mortar_stucco_dist
+
+    def validate_step_increment(self, P, S, V):
+        if V == 'focusout':
+            try:
+                value = float(P)
+                if value > self.max_step_dist or value < 0:
+                    raise ValueError(f'Step Dist. must be less than {self.max_step_dist}')
+                return True
+            except ValueError:
+                return False
+
+        if len(S) == 0 or S.isdigit():
+            return True
+
+        try:
+            if len(P):
+                float(P)
+            return True
+        except ValueError:
+            return False
+
+    def invalid_step_increment(self, P, s, V):
+        if V == 'focusout':
+            value = self.default_step_dist
+
+            if len(P):
+                xvalue = float(P)
+                if xvalue > self.max_step_dist:
+                    value = self.max_step_dist
+                elif xvalue < 0:
+                    value = 0
+
+            self.step_dist_entry.config(validate="none")
+            self.step_dist.set(value)
+            self.step_dist_entry.config(validate="all")
+
+    def is_bound_key_event(self, evt):
+        return evt.widget != self.step_dist_entry
+
+    def step_dist_entry_focus(self, evt):
+        if evt.widget != self.step_dist_entry:
+            self.focus_set()
 
     def get_key_percent_id(self, key):
         return f'{key}_perc'
@@ -183,12 +265,12 @@ class App(tk.Tk):
         self.update_total_count_and_percentages()
 
     def clear_one(self, evt):
-        if len(self.raw_key_inputs):
+        if self.is_bound_key_event(evt) and len(self.raw_key_inputs):
             last_key = self.raw_key_inputs.pop()
             key_count = getattr(self, last_key)
             key_count.set(key_count.get() - 1)
             self.update_total_count_and_percentages()
-            self.move_backward(evt)
+            self.step_backward(evt)
 
     def export_csv(self):
         curr_dir = os.getcwd()
@@ -226,11 +308,13 @@ class App(tk.Tk):
                 self.total_perc.get()
             ])
 
-    def move_forward(self, evt):
-        self.controller.move_forward(self.step_distance.get())
+    def step_forward(self, evt):
+        if self.is_bound_key_event(evt):
+            self.controller.move_forward(float(self.step_dist.get()))
 
-    def move_backward(self, evt):
-        self.controller.move_backward(self.step_distance.get())
+    def step_backward(self, evt):
+        if self.is_bound_key_event(evt):
+            self.controller.move_backward(float(self.step_dist.get()))
 
 
 if __name__ == "__main__":
