@@ -2,15 +2,11 @@ from datetime import datetime
 from serial.tools import list_ports
 import tkinter as tk
 import tkinter.filedialog
+import tkinter.messagebox
 import serial
 import csv
 import os
 
-DEBUG = True
-
-def log(*args):
-    if DEBUG:
-        print(*args)
 
 class MotorController:
 
@@ -24,19 +20,15 @@ class MotorController:
             self.serial = serial.Serial(self.port.device)
 
     def find_port(self):
-        ports = list_ports.comports()
-        for p in ports:
+        for p in self.list_ports():
             if p.manufacturer and self.usb_mfr in p.manufacturer:
                 self.port = p
-
-    def print_ports(self):
-        ports = list_ports.comports()
-        for p in ports:
-            print(p.__dict__)
+    
+    def list_ports(self):
+        return list_ports.comports()
 
     def write(self, value):
         if self.serial:
-            log(f'Motor control command sent: {value}')
             self.serial.write(str.encode(value))
 
     def move_command(self, dist):
@@ -61,7 +53,7 @@ class App(tk.Tk):
 
         self.concrete_dist = 0.1
         self.mortar_stucco_dist = 0.05
-        self.max_step_dist = 5
+        self.max_step_dist = 5.0
         self.default_step_dist = self.concrete_dist
 
         self.title("Concrete Aggregate Counter")
@@ -136,7 +128,8 @@ class App(tk.Tk):
         def on_key_press(evt):
             if self.is_bound_key_event(evt):
                 self.raw_key_inputs.append(key)
-                self.update_key_count(key_count)
+                new_value = key_count.get() + 1
+                key_count.set(new_value)
                 self.update_total_count_and_percentages()
                 self.step_forward(evt)
 
@@ -154,7 +147,7 @@ class App(tk.Tk):
         self.step_dist.set(self.default_step_dist)
 
         step_pady = 25
-        data_pady = 15
+        data_pady = 20
         muted_text = 'grey'
 
         tk.Label(self, text='Step Dist. (in.):', fg=muted_text).grid(row=0, column=0, pady=step_pady, sticky='E')
@@ -162,6 +155,7 @@ class App(tk.Tk):
         tk.Button(self, text='Concrete', command=self.set_concrete_dist).grid(row=0, column=2, pady=step_pady, sticky='WE')
         tk.Button(self, text='Mortar/Stucco', command=self.set_mortar_stucco_dist).grid(row=0, column=3, pady=step_pady, sticky='WE')
 
+        tk.Button(self, text='List Ports', command=self.list_ports).grid(row=self.controls_row_offset, column=0, pady=data_pady, sticky='E')
         tk.Label(self, text='Data Options:', fg=muted_text).grid(row=self.controls_row_offset, column=1, pady=data_pady, sticky='E')
         tk.Button(self, text='Reset', command=self.clear_all).grid(row=self.controls_row_offset, column=2, pady=data_pady, sticky='WE')
         tk.Button(self, text='Export', command=self.export_csv).grid(row=self.controls_row_offset, column=3, pady=data_pady, sticky='WE')
@@ -217,15 +211,24 @@ class App(tk.Tk):
             self.step_dist.set(value)
             self.step_dist_entry.config(validate="all")
 
+    def list_ports(self):
+        message = ''
+        for p in self.controller.list_ports():
+            message = message + '\n' + '\n'.join([
+                f'Device: {p.device}',
+                f'Name: {p.name}',
+                f'Description: {p.description}',
+                f'Manufacturer: {p.manufacturer}',
+                f'Product: {p.product}',
+            ]) + '\n'
+        tkinter.messagebox.showinfo(title='Ports', message=message)
+
     def is_bound_key_event(self, evt):
         return evt.widget != self.step_dist_entry
 
     def step_dist_entry_focus(self, evt):
         if evt.widget != self.step_dist_entry:
             self.focus_set()
-
-    def get_key_percent_id(self, key):
-        return f'{key}_perc'
 
     def update_total_count_and_percentages(self):
         total = 0
@@ -249,10 +252,9 @@ class App(tk.Tk):
                 key_perc = 0.0
             getattr(self, self.get_key_percent_id(key)).set(key_perc)
 
-    def update_key_count(self, key_count):
-        new_value = key_count.get() + 1
-        key_count.set(new_value)
-        
+    def get_key_percent_id(self, key):
+        return f'{key}_perc'
+
     def reset_key(self, key):
         key_count = getattr(self, key)
         key_count.set(0)
@@ -271,6 +273,14 @@ class App(tk.Tk):
             key_count.set(key_count.get() - 1)
             self.update_total_count_and_percentages()
             self.step_backward(evt)
+
+    def step_forward(self, evt):
+        if self.is_bound_key_event(evt):
+            self.controller.move_forward(float(self.step_dist.get()))
+
+    def step_backward(self, evt):
+        if self.is_bound_key_event(evt):
+            self.controller.move_backward(float(self.step_dist.get()))
 
     def export_csv(self):
         curr_dir = os.getcwd()
@@ -307,14 +317,6 @@ class App(tk.Tk):
                 self.total_count.get(),
                 self.total_perc.get()
             ])
-
-    def step_forward(self, evt):
-        if self.is_bound_key_event(evt):
-            self.controller.move_forward(float(self.step_dist.get()))
-
-    def step_backward(self, evt):
-        if self.is_bound_key_event(evt):
-            self.controller.move_backward(float(self.step_dist.get()))
 
 
 if __name__ == "__main__":
