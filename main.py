@@ -7,22 +7,21 @@ import serial
 import csv
 import os
 
-
 class MotorController:
 
     def __init__(self, usb_mfr='Velmex'):
         self.usb_mfr = usb_mfr
-        self.port = None
+        self.port = self.find_port()
         self.serial = None
 
-        self.find_port()
         if self.port:
             self.serial = serial.Serial(self.port.device)
 
     def find_port(self):
         for p in self.list_ports():
             if p.manufacturer and self.usb_mfr in p.manufacturer:
-                self.port = p
+                return p
+        return None
     
     def list_ports(self):
         return list_ports.comports()
@@ -158,9 +157,9 @@ class App(tk.Tk):
         tk.Button(self, text='List Ports', command=self.list_ports).grid(row=self.controls_row_offset, column=0, pady=data_pady, sticky='E')
         tk.Label(self, text='Data Options:', fg=muted_text).grid(row=self.controls_row_offset, column=1, pady=data_pady, sticky='E')
         tk.Button(self, text='Reset', command=self.clear_all).grid(row=self.controls_row_offset, column=2, pady=data_pady, sticky='WE')
-        tk.Button(self, text='Export', command=self.export_csv).grid(row=self.controls_row_offset, column=3, pady=data_pady, sticky='WE')
+        tk.Button(self, text='Export', command=self.export_data).grid(row=self.controls_row_offset, column=3, pady=data_pady, sticky='WE')
 
-        self.bind('<BackSpace>', self.clear_one)
+        self.bind('<BackSpace>', self.clear_last)
 
         self.bind('<Return>', lambda evt: self.focus_set())
         self.bind('<1>', self.step_dist_entry_focus)
@@ -177,21 +176,19 @@ class App(tk.Tk):
         self.default_step_dist =  self.mortar_stucco_dist
 
     def validate_step_increment(self, P, S, V):
-        if V == 'focusout':
-            try:
+        try:
+            if V == 'focusout':
                 value = float(P)
                 if value > self.max_step_dist or value < 0:
                     raise ValueError(f'Step Dist. must be less than {self.max_step_dist}')
                 return True
-            except ValueError:
-                return False
 
-        if len(S) == 0 or S.isdigit():
-            return True
+            if len(S) == 0 or S.isdigit():
+                return True
 
-        try:
             if len(P):
                 float(P)
+
             return True
         except ValueError:
             return False
@@ -266,7 +263,7 @@ class App(tk.Tk):
             self.reset_key(key)
         self.update_total_count_and_percentages()
 
-    def clear_one(self, evt):
+    def clear_last(self, evt):
         if self.is_bound_key_event(evt) and len(self.raw_key_inputs):
             last_key = self.raw_key_inputs.pop()
             key_count = getattr(self, last_key)
@@ -282,7 +279,7 @@ class App(tk.Tk):
         if self.is_bound_key_event(evt):
             self.controller.move_backward(float(self.step_dist.get()))
 
-    def export_csv(self):
+    def export_data(self):
         curr_dir = os.getcwd()
         initial_filename = f'aggregate-count-{datetime.now().strftime("%d-%m-%Y_%I-%M-%S_%p")}'
 
@@ -295,13 +292,16 @@ class App(tk.Tk):
             filetypes=my_formats,
             initialdir=curr_dir,
             initialfile=initial_filename,
-            title="Save as...",
+            title='Save as...',
             defaultextension='.csv'
         )
 
         if filepath is None:
             return
+        
+        self.write_csv(filepath)
 
+    def write_csv(self, filepath):
         with open(filepath.name, 'w') as f:
             w = csv.writer(f)
             w.writerow(self.heading[1:])
