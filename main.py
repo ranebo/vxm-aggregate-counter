@@ -299,6 +299,7 @@ class App(tk.Tk):
         if filepath is None:
             return
         
+        # Can check filepath type for writing different file types (maybe break out into own class - file handling)
         self.write_csv(filepath)
 
     def write_csv(self, filepath):
