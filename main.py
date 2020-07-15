@@ -9,7 +9,7 @@ import os
 
 class MotorController:
 
-    def __init__(self, usb_mfr='Prolific'):
+    def __init__(self, usb_mfr='Prolific Technology Inc.'):
         self.usb_mfr = usb_mfr
         self.port = self.find_port()
         self.serial = None
@@ -19,7 +19,9 @@ class MotorController:
 
     def find_port(self):
         for p in self.list_ports():
+            print(p.__dict__, '\n')
             if p.manufacturer and self.usb_mfr in p.manufacturer:
+                print('Found:', p)
                 return p
         return None
     
@@ -27,11 +29,13 @@ class MotorController:
         return list_ports.comports()
 
     def write(self, value):
+        # Change this to a queue to keep up with mutliple
         if self.serial:
+            print('Sending command: ', str.encode(value))
             self.serial.write(str.encode(value))
 
     def move_command(self, dist):
-        return f'F,C,I1M{dist},L1;'
+        return f'F,C,I1M{dist},L1,R,Q\r'
 
     def convert_to_steps(self, dist):
         return int(round(dist * (1550 / 0.1))) # steps = inches * (steps/inches))
