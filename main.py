@@ -19,9 +19,7 @@ class MotorController:
 
     def find_port(self):
         for p in self.list_ports():
-            print(p.__dict__, '\n')
             if p.manufacturer and self.usb_mfr in p.manufacturer:
-                print('Found:', p)
                 return p
         return None
     
@@ -31,7 +29,6 @@ class MotorController:
     def write(self, value):
         # Change this to a queue to keep up with mutliple
         if self.serial:
-            print('Sending command: ', str.encode(value))
             self.serial.write(str.encode(value))
 
     def move_command(self, dist):
