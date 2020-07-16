@@ -9,7 +9,7 @@ import os
 
 class MotorController:
 
-    def __init__(self, usb_mfr='Prolific Technology Inc.'):
+    def __init__(self, usb_mfr='Prolific'):
         self.usb_mfr = usb_mfr
         self.port = self.find_port()
         self.serial = None
