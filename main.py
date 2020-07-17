@@ -20,6 +20,7 @@ class MotorController:
     def find_port(self):
         for p in self.list_ports():
             if p.manufacturer and self.usb_mfr in p.manufacturer:
+                print('Connecting to port', p)
                 return p
         return None
     
@@ -292,14 +293,14 @@ class App(tk.Tk):
 
     def step_forward(self, evt):
         if self.is_bound_key_event(evt):
-            if self.is_reverse and self.should_reverse(evt):
+            if self.is_reverse.get() and self.should_reverse(evt):
                 self.controller.move_backward(float(self.step_dist.get()))
             else:
                 self.controller.move_forward(float(self.step_dist.get()))
 
     def step_backward(self, evt):
         if self.is_bound_key_event(evt):
-            if self.is_reverse and self.should_reverse(evt):
+            if self.is_reverse.get() and self.should_reverse(evt):
                 self.controller.move_forward(float(self.step_dist.get()))
             else:
                 self.controller.move_backward(float(self.step_dist.get()))
