@@ -29,6 +29,7 @@ class MotorController:
     def write(self, value):
         # Change this to a queue to keep up with mutliple
         if self.serial:
+            print('Motor command sent:', value)
             self.serial.write(str.encode(value))
 
     def move_command(self, dist):
@@ -57,7 +58,7 @@ class App(tk.Tk):
         self.default_step_dist = self.concrete_dist
 
         self.title("Jon's PetroPro")
-        self.geometry("500x350")
+        self.geometry("600x500")
 
         self.raw_key_inputs = []
 
@@ -72,9 +73,13 @@ class App(tk.Tk):
             ('x', 'Other'),
         )
 
+        self.chars = [key for key, label in self.keys_config]
+
         self.total_label = 'Total'
         self.total_count = tk.IntVar()
         self.total_perc = tk.DoubleVar()
+
+        self.is_reverse = tk.BooleanVar(value=False)
 
         self.step_dist = tk.StringVar()
         self.step_dist_entry = tk.Entry(
@@ -87,7 +92,8 @@ class App(tk.Tk):
             invalidcommand=(self.register(self.invalid_step_increment), '%P', '%s', '%V')
         )
 
-        self.heading_row_offset = 2
+        self.reverse_row_offset = 1
+        self.heading_row_offset = 3
         self.totals_row_offset = self.heading_row_offset + len(self.keys_config)
         self.controls_row_offset = self.totals_row_offset + 1
 
@@ -102,7 +108,7 @@ class App(tk.Tk):
 
     def setup_heading(self):
         for i, text in enumerate(self.heading):
-            tk.Label(self, text=text, pady=5, font='Verdana 14 bold underline').grid(row=1,column=i)
+            tk.Label(self, text=text, pady=5, font='Verdana 14 bold underline').grid(row=2,column=i)
 
     def setup_keys(self):
         for i, row in enumerate(self.keys_config):
@@ -146,19 +152,24 @@ class App(tk.Tk):
     def setup_specials(self):
         self.step_dist.set(self.default_step_dist)
 
-        step_pady = 25
-        data_pady = 20
+        pady = 20
         muted_text = 'grey'
 
-        tk.Label(self, text='Step Dist. (in.):', fg=muted_text).grid(row=0, column=0, pady=step_pady, sticky='E')
-        self.step_dist_entry.grid(row=0, column=1, pady=step_pady)
-        tk.Button(self, text='Concrete', command=self.set_concrete_dist).grid(row=0, column=2, pady=step_pady, sticky='WE')
-        tk.Button(self, text='Mortar/Stucco', command=self.set_mortar_stucco_dist).grid(row=0, column=3, pady=step_pady, sticky='WE')
+        tk.Label(self, text='Step Dist. (in.):', fg=muted_text).grid(row=0, column=0, pady=pady, sticky='E')
+        self.step_dist_entry.grid(row=0, column=1, pady=pady)
+        tk.Button(self, text='Concrete', command=self.set_concrete_dist).grid(row=0, column=2, pady=pady, sticky='WE')
+        tk.Button(self, text='Mortar/Stucco', command=self.set_mortar_stucco_dist).grid(row=0, column=3, pady=pady, sticky='WE')
 
-        tk.Button(self, text='List Ports', command=self.list_ports).grid(row=self.controls_row_offset, column=0, pady=data_pady, sticky='E')
-        tk.Label(self, text='Data Options:', fg=muted_text).grid(row=self.controls_row_offset, column=1, pady=data_pady, sticky='E')
-        tk.Button(self, text='Reset', command=self.clear_all).grid(row=self.controls_row_offset, column=2, pady=data_pady, sticky='WE')
-        tk.Button(self, text='Export', command=self.export_data).grid(row=self.controls_row_offset, column=3, pady=data_pady, sticky='WE')
+        tk.Label(self, text='Direction: ', fg=muted_text).grid(row=self.reverse_row_offset, column=1, pady=pady, sticky='E')
+        tk.Radiobutton(self, text="East", variable=self.is_reverse, indicatoron=False, value=True, width=8).grid(row=self.reverse_row_offset, column=2, pady=pady, sticky='WE')
+        tk.Radiobutton(self, text="West", variable=self.is_reverse, indicatoron=False, value=False, width=8).grid(row=self.reverse_row_offset, column=3, pady=pady, sticky='WE')
+
+        tk.Button(self, text='List Ports', command=self.list_ports).grid(row=self.controls_row_offset, column=0, pady=pady, sticky='E')
+        tk.Label(self, text='Data Options:', fg=muted_text).grid(row=self.controls_row_offset, column=1, pady=pady, sticky='E')
+        tk.Button(self, text='Reset', command=self.clear_all).grid(row=self.controls_row_offset, column=2, pady=pady, sticky='WE')
+        tk.Button(self, text='Export', command=self.export_data).grid(row=self.controls_row_offset, column=3, pady=pady, sticky='WE')
+
+        self.bind('r', self.toggle_reverse)
 
         self.bind('<BackSpace>', self.clear_last)
 
@@ -167,6 +178,10 @@ class App(tk.Tk):
 
         self.bind('<Right>', self.step_forward)
         self.bind('<Left>', self.step_backward)
+
+
+    def toggle_reverse(self, evt):
+        self.is_reverse.set(not self.is_reverse.get())
 
     def set_concrete_dist(self):
         self.step_dist.set(self.concrete_dist)
@@ -272,13 +287,22 @@ class App(tk.Tk):
             self.update_total_count_and_percentages()
             self.step_backward(evt)
 
+    def should_reverse(self, evt):
+        return hasattr(evt, 'char') and evt.char in self.chars
+
     def step_forward(self, evt):
         if self.is_bound_key_event(evt):
-            self.controller.move_forward(float(self.step_dist.get()))
+            if self.is_reverse and self.should_reverse(evt):
+                self.controller.move_backward(float(self.step_dist.get()))
+            else:
+                self.controller.move_forward(float(self.step_dist.get()))
 
     def step_backward(self, evt):
         if self.is_bound_key_event(evt):
-            self.controller.move_backward(float(self.step_dist.get()))
+            if self.is_reverse and self.should_reverse(evt):
+                self.controller.move_forward(float(self.step_dist.get()))
+            else:
+                self.controller.move_backward(float(self.step_dist.get()))
 
     def export_data(self):
         curr_dir = os.getcwd()
